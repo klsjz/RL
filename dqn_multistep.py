@@ -277,14 +277,14 @@ def rollout(env, model):
     print('\nCollecting experience...')
     total_step = 0
     for epi in range(MAX_EPI):
-        s=env.reset()
+        s, _=env.reset()
         epi_r = 0
         epi_loss = 0
         for step in range(MAX_STEP):
-            # env.render()
+            env.render()
             total_step += 1
             a = model.choose_action(s)
-            s_, r, done, info = env.step(a)
+            s_, r, done, info, _ = env.step(a)
             # r_buffer.add(torch.tensor([s]), torch.tensor([s_]), torch.tensor([[a]]), torch.tensor([[r]], dtype=torch.float), torch.tensor([[done]]))
             r_buffer.add([s,s_,[a],[r],[done]])
             model.epsilon_scheduler.step(total_step)
@@ -303,7 +303,7 @@ def rollout(env, model):
             np.save('log/'+timestamp, log)
 
 if __name__ == '__main__':
-    env = gym.make('CartPole-v1')
+    env = gym.make('CartPole-v1',render_mode="human")
     print(env.observation_space, env.action_space)
     model = DQN(env)
     rollout(env, model)
