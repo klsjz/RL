@@ -154,13 +154,16 @@ class DQN(object):
         self.loss_func = nn.MSELoss()
         self.epsilon_scheduler = EpsilonScheduler(EPSILON_START, EPSILON_END, EPSILON_DECAY)
         self.updates = 0
+        self.epi_r_max = 0
 
-    def choose_action(self, x):
+    def choose_action(self, x, eval=False):
         # x = Variable(torch.unsqueeze(torch.FloatTensor(x), 0)).to(device)
         x = torch.unsqueeze(torch.FloatTensor(x), 0).to(device)
         # input only one sample
         # if np.random.uniform() > EPSILON:   # greedy
         epsilon = self.epsilon_scheduler.get_epsilon()
+        if eval:
+            epsilon = -1
         if np.random.uniform() > epsilon:   # greedy
             actions_value = self.eval_net.forward(x)
             action = torch.max(actions_value, 1)[1].data.cpu().numpy()[0]     # return the argmax
@@ -241,7 +244,7 @@ def rollout(env, model):
         epi_r = 0
         epi_loss = 0
         for step in range(MAX_STEP):
-            env.render()
+            # env.render()
             total_step += 1
             a = model.choose_action(s)
             s_, r, done, info, _ = env.step(a)
@@ -257,13 +260,33 @@ def rollout(env, model):
                 break
             s = s_
         print('Ep: ', epi, '| Ep_r: ', epi_r, '| Steps: ', step, f'| Ep_Loss: {epi_loss:.4f}', )
+        print(model.epsilon_scheduler.get_epsilon())
         log.append([epi, epi_r, step])
+        if(epi_r > model.epi_r_max):
+            model.epi_r_max = epi_r
         # if epi % SAVE_INTERVAL == 0:
-            # model.save_model()
+            model.save_model()
             # np.save('log/'+timestamp, log)
 
 if __name__ == '__main__':
     env = gym.make('CartPole-v1', render_mode="human")
     print(env.observation_space, env.action_space)
     model = DQN(env)
-    rollout(env, model)
+    # rollout(env, model)
+
+
+
+    
+    model.eval_net.load_state_dict(torch.load('model/dqn'))
+    s,_=env.reset()
+    epi_r = 0
+    # model.epsilon_scheduler.step(0)
+    for step in range(MAX_STEP):
+        # env.render()
+        a = model.choose_action(s, True)
+        s_, r, done, info, _ = env.step(a)
+        if done:
+            break
+        epi_r += r
+        s = s_
+    print(epi_r)
