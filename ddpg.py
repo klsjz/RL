@@ -24,6 +24,16 @@ from reacher import Reacher
 import argparse
 
 
+SEED = 42
+
+random.seed(SEED)          # Python随机库
+np.random.seed(SEED)       # NumPy随机库
+torch.manual_seed(SEED)    # PyTorch（CPU）
+torch.cuda.manual_seed(SEED)  # PyTorch（GPU）
+torch.backends.cudnn.deterministic = True  # 确保CUDNN的可重复性
+
+
+
 GPU = True
 device_idx = 0
 if GPU:
@@ -140,6 +150,8 @@ class DDPG():
     def __init__(self, replay_buffer, state_dim, action_dim, hidden_dim):
         self.replay_buffer = replay_buffer
         self.qnet = QNetwork(state_dim+action_dim, hidden_dim).to(device)
+        self.qnet1 = QNetwork(state_dim+action_dim, hidden_dim).to(device)
+
         self.target_qnet = QNetwork(state_dim+action_dim, hidden_dim).to(device)
         self.policy_net = ActorNetwork(state_dim, action_dim, hidden_dim).to(device)
         self.target_policy_net = ActorNetwork(state_dim, action_dim, hidden_dim).to(device)
@@ -180,7 +192,10 @@ class DDPG():
         predict_q = self.qnet(state, action) # for q 
         new_next_action = self.target_policy_net.evaluate_action(next_state)  # for q
         new_action = self.policy_net.evaluate_action(state) # for policy
-        predict_new_q = self.qnet(state, new_action) # for policy
+        self.qnet1.load_state_dict(self.qnet.state_dict())
+        predict_new_q = self.qnet1(state, new_action) # for policy
+
+
         target_q = reward+(1-done)*gamma*self.target_qnet(next_state, new_next_action)  # for q
         # reward = reward_scale * (reward - reward.mean(dim=0)) /reward.std(dim=0) # normalize with batch mean and std
 
@@ -251,14 +266,16 @@ if __name__ == '__main__':
     SCREEN_SIZE=1000
     # SPARSE_REWARD=False
     # SCREEN_SHOT=False
-    ENV = ['Pendulum', 'Reacher', 'HalfCheetah'][2]
+    ENV = ['Pendulum', 'Reacher', 'HalfCheetah'][0]
     if ENV == 'Reacher':
         env=Reacher(screen_size=SCREEN_SIZE, num_joints=NUM_JOINTS, link_lengths = LINK_LENGTH, \
         ini_joint_angles=INI_JOING_ANGLES, target_pos = [369,430], render=True)
         action_dim = env.num_actions
         state_dim  = env.num_observations
     elif ENV == 'Pendulum':
-        env = NormalizedActions(gym.make("Pendulum-v0"))
+        # env = NormalizedActions(gym.make("Pendulum-v1", render_mode="human"))
+        env = gym.make("Pendulum-v1")
+
         # env = gym.make("Pendulum-v0")
         action_dim = env.action_space.shape[0]
         state_dim  = env.observation_space.shape[0]
@@ -276,7 +293,7 @@ if __name__ == '__main__':
     model_path='./model/ddpg'
     torch.autograd.set_detect_anomaly(True)
     alg = DDPG(replay_buffer, state_dim, action_dim, hidden_dim)
-
+    max_reward = -1000
     if args.train:
         # alg.load_model(model_path)
 
@@ -289,7 +306,7 @@ if __name__ == '__main__':
         for i_episode in range (max_episodes):
             q_loss_list=[]
             policy_loss_list=[]
-            state = env.reset()
+            state, _ = env.reset()
             episode_reward = 0
 
             for step in range(max_steps):
@@ -297,7 +314,8 @@ if __name__ == '__main__':
                     action = alg.policy_net.select_action(state)
                 else:
                     action = alg.policy_net.sample_action(action_range=1.)
-                next_state, reward, done, _ = env.step(action)
+                # import pdb;pdb.set_trace()
+                next_state, reward, done, _, _ = env.step(action)
                 if ENV !='Reacher':
                     env.render()
                 replay_buffer.push(state, action, reward, next_state, done)
@@ -313,12 +331,15 @@ if __name__ == '__main__':
                 
                 if done:
                     break
-            if i_episode % 20 == 0:
-                plot(rewards)
-                alg.save_model(model_path)
+            # if i_episode % 20 == 0:
+            #     plot(rewards)
+            #     alg.save_model(model_path)
             print('Eps: ', i_episode, '| Reward: ', episode_reward, '| Loss: ', np.average(q_loss_list), np.average(policy_loss_list))
             
             rewards.append(episode_reward)
+            if(episode_reward > max_reward):
+                alg.save_model(model_path)
+                max_reward = episode_reward
 
 
     if args.test:
@@ -329,12 +350,12 @@ if __name__ == '__main__':
         for i_episode in range (test_episodes):
             q_loss_list=[]
             policy_loss_list=[]
-            state = env.reset()
+            state, _ = env.reset()
             episode_reward = 0
 
             for step in range(max_steps):
                 action = alg.policy_net.select_action(state, noise_scale=0.0)  # no noise for testing
-                next_state, reward, done, _ = env.step(action)
+                next_state, reward, done, _, _ = env.step(action)
                 
                 state = next_state
                 episode_reward += reward
