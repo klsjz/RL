@@ -225,9 +225,9 @@ class DDPG():
         torch.save(self.policy_net.state_dict(), path+'_policy')
 
     def load_model(self, path):
-        self.qnet.load_state_dict(torch.load(path+'_q'))
-        self.target_qnet.load_state_dict(torch.load(path+'_target_q'))
-        self.policy_net.load_state_dict(torch.load(path+'_policy'))
+        self.qnet.load_state_dict(torch.load(path+'_q',  map_location=torch.device('cpu')))
+        self.target_qnet.load_state_dict(torch.load(path+'_target_q',  map_location=torch.device('cpu')))
+        self.policy_net.load_state_dict(torch.load(path+'_policy',  map_location=torch.device('cpu')))
         self.qnet.eval()
         self.target_qnet.eval()
         self.policy_net.eval()
@@ -274,7 +274,7 @@ if __name__ == '__main__':
         state_dim  = env.num_observations
     elif ENV == 'Pendulum':
         # env = NormalizedActions(gym.make("Pendulum-v1", render_mode="human"))
-        env = gym.make("Pendulum-v1")
+        env = gym.make("Pendulum-v1",  render_mode="human")
 
         # env = gym.make("Pendulum-v0")
         action_dim = env.action_space.shape[0]
